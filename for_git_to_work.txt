@@ -1,0 +1,10 @@
+In order to make your git work in k8 server, you need to add the ssh key to the ssh agent
+
+ssh-add <yourkey>
+
+example :
+
+ssh-add ~/.ssh/paradis
+ssh-add ~/.ssh/rsa
+
+
