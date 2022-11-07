@@ -2,12 +2,18 @@
 #include <stdio.h>
 #include <gmp.h>
 #include <time.h>
+#include <stdlib.h>
 
-// #define NB_QUEENS 8
-#define INT_TYPE unsigned long long
+#if MPI > 0
+#include <pthread.h>
+#include <mpi.h>
+#endif
+
+#if MPI > 0
+int myrank, numprocs, running;
+#endif
 
 mpz_t chessboard;
-
 mpz_t diagonals1[NB_QUEENS][NB_QUEENS];
 mpz_t diagonals2[NB_QUEENS][NB_QUEENS];
 mpz_t columns[NB_QUEENS];
@@ -435,11 +441,19 @@ void checkAllQueensRec(mpz_t board, int row)
 }
 
 int stack_max = 0;
-unsigned long long allocated_ints = 0;
+
+MPI_Request request;
 
 void checkAllQueensIt()
 {
+
     int index_stack = 0;
+#if MPI > 0
+    if (myrank != 0)
+    {
+        index_stack = -1;
+    }
+#endif
 
     // Creating and prealocating boards
     mpz_t boards[INT_SIZE];
@@ -454,56 +468,122 @@ void checkAllQueensIt()
     int rows[INT_SIZE];
     rows[0] = 0;
 
-    while (index_stack >= 0)
+#if MPI > 0
+    while (running)
     {
-        stack_max = (index_stack > stack_max) * index_stack + (index_stack <= stack_max) * stack_max;
-
-        mpz_set(current_board, boards[index_stack]);
-        int old_stack = index_stack;
-        int row = rows[index_stack];
-        --index_stack;
-#if RUN_SHOW_STACK > 0
-        printf("Stack : %d\n", index_stack);
 #endif
-
-        if (row == NB_QUEENS)
+        while (index_stack >= 0)
         {
-#if RUN_SHOW_SOLUTIONS > 0
-            showChessboard(current_board);
+#if MPI > 0
+            if (index_stack > 2)
+            {
+                int rcv_rank = -1;
+                MPI_Irecv(&rcv_rank, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ASK_TAG, MPI_COMM_WORLD, &request);
+                MPI_Wait(&request, MPI_STATUS_IGNORE);
+                if (rcv_rank >= 0)
+                {
+                    printf("Recieved rank : %d\n", rcv_rank);
+                }
+                if (rcv_rank != -1)
+                {
+                    printf("Send ack\n");
+
+                    int ack = 1;
+                    MPI_Send(&ack, 1, MPI_INT, rcv_rank, MPI_ACK_TAG, MPI_COMM_WORLD);
+
+                    char *serialized_board = malloc(MPI_SERIALIZED_BOARD_LENGTH);
+                    mpz_get_str(serialized_board, 36, boards[index_stack]);
+
+                    printf("Send board\n");
+
+                    MPI_Send(serialized_board, MPI_SERIALIZED_BOARD_LENGTH, MPI_BYTE, rcv_rank, MPI_BOARD_TAG, MPI_COMM_WORLD);
+                    printf("Send stack\n");
+                    MPI_Send(rows + index_stack, 1, MPI_INT, rcv_rank, MPI_ROW_TAG, MPI_COMM_WORLD);
+
+                    --index_stack;
+
+                    free(serialized_board);
+                }
+            }
+#endif
+            stack_max = (index_stack > stack_max) * index_stack + (index_stack <= stack_max) * stack_max;
+
+            mpz_set(current_board, boards[index_stack]);
+            int old_stack = index_stack;
+            int row = rows[index_stack];
+            --index_stack;
+#if RUN_SHOW_STACK > 0
+            printf("Stack : %d\n", index_stack);
 #endif
 
-            ++nb_solutions;
+            if (row == NB_QUEENS)
+            {
+#if RUN_SHOW_SOLUTIONS > 0
+                showChessboard(current_board);
+#endif
+
+                ++nb_solutions;
 
 #if RUN_SHOW_SOLUTIONS_EVOLUTION > 0
-            printf("Nb solutions : %llu\n", nb_solutions);
+                printf("Nb solutions : %llu\n", nb_solutions);
 #endif
-        }
-        else
-        {
-            for (int col = 0; col < NB_QUEENS; ++col)
+            }
+            else
             {
-                if (isQueenValid(current_board, row, col))
+                for (int col = 0; col < NB_QUEENS; ++col)
                 {
-                    ++index_stack;
+                    if (isQueenValid(current_board, row, col))
+                    {
+                        ++index_stack;
 #if RUN_SHOW_STACK > 0
-                    printf("Stack : %d\n", index_stack);
+                        printf("Stack : %d\n", index_stack);
 #endif
 #if RUN_SHOW_STACK_EVOLUTION > 0
-                    if (index_stack > stack_max)
-                    {
-                        printf("New stack max : %d\n", index_stack);
-                    }
+                        if (index_stack > stack_max)
+                        {
+                            printf("New stack max : %d\n", index_stack);
+                        }
 #endif
-                    mpz_set(boards[index_stack], current_board);
-                    // put the queen at position (row,col)
-                    addQueenAt(boards[index_stack], row, col);
+                        mpz_set(boards[index_stack], current_board);
+                        // put the queen at position (row,col)
+                        addQueenAt(boards[index_stack], row, col);
 
-                    rows[index_stack] = row + 1;
+                        rows[index_stack] = row + 1;
+                    }
                 }
             }
         }
-        // mpz_clear(current_board);
+#if MPI > 0
+        for (int dest_rank = 0; dest_rank < numprocs; ++dest_rank)
+        {
+            if (dest_rank != myrank)
+            {
+                printf("Proc %d asked stack to : %d\n", myrank, dest_rank);
+                int rcv_ack = 0;
+                MPI_Ssend(&myrank, 1, MPI_INT, dest_rank, MPI_ASK_TAG, MPI_COMM_WORLD);
+                MPI_Recv(&rcv_ack, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ACK_TAG, MPI_COMM_WORLD, NULL);
+
+                printf("Proc %d recieved ack : %d\n", myrank, rcv_ack);
+
+                if (rcv_ack == 1)
+                {
+                    index_stack = 0;
+                    char *serialized_board = malloc(MPI_SERIALIZED_BOARD_LENGTH);
+                    MPI_Recv(serialized_board, MPI_SERIALIZED_BOARD_LENGTH, MPI_BYTE, MPI_ANY_SOURCE, MPI_BOARD_TAG, MPI_COMM_WORLD, NULL);
+                    printf("Proc %d recieved board : %s\n", myrank, serialized_board);
+                    mpz_set_str(boards[index_stack], serialized_board, 36);
+
+                    int row;
+                    MPI_Recv(&row, 1, MPI_INT, MPI_ANY_SOURCE, MPI_ROW_TAG, MPI_COMM_WORLD, NULL);
+                    printf("Proc %d recieved row : %d\n", myrank, row);
+                    rows[index_stack] = row;
+
+                    free(serialized_board);
+                }
+            }
+        }
     }
+#endif
 
     // clearing boards
     for (int i = 0; i < INT_SIZE; ++i)
@@ -515,6 +595,15 @@ void checkAllQueensIt()
 
 int main()
 {
+
+#if MPI > 0
+    MPI_Init(NULL, NULL);
+    MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
+    MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
+    MPI_Barrier(MPI_COMM_WORLD); /*synchronize all processes*/
+    running = 1;
+#endif
+
     printf("%d queen problem\n", NB_QUEENS);
     clock_t begin_build = clock();
     buildMasks(0b00000);
@@ -533,7 +622,7 @@ int main()
 
     begin_queens = clock();
     nb_solutions = 0;
-    checkAllQueensIt(0);
+    checkAllQueensIt();
     time_spent = (double)(clock() - begin_queens) / CLOCKS_PER_SEC;
     printf("Iterative : Found %llu solutions in %g seconds\n", nb_solutions, time_spent);
     printf("Biggest stack : %d\n", stack_max);
@@ -542,4 +631,7 @@ int main()
 
     time_spent = (double)(clock() - begin_build) / CLOCKS_PER_SEC;
     printf("Total time to complete %g seconds\n", time_spent);
+#if MPI > 0
+    MPI_Finalize();
+#endif
 }

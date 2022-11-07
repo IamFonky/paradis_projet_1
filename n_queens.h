@@ -2,7 +2,7 @@
 #define N_QUEENS_H
 #include <gmp.h>
 
-#define NB_QUEENS 8
+#define NB_QUEENS 14
 #define INT_SIZE  NB_QUEENS*NB_QUEENS
 
 // VERBOSE DIRECTIVES
@@ -14,5 +14,13 @@
 
 #define RUN_SHOW_SOLUTIONS 0
 #define RUN_SHOW_STACK_EVOLUTION 0
+
+#define MPI 1
+#define MPI_ASK_TAG 69
+#define MPI_ACK_TAG 96
+#define MPI_BOARD_TAG 50
+#define MPI_ROW_TAG 51
+#define MPI_SERIALIZED_BOARD_LENGTH 100
+
 
 #endif // N_QUEENS_H
