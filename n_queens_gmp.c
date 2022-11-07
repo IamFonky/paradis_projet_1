@@ -13,6 +13,9 @@ mpz_t diagonals2[NB_QUEENS][NB_QUEENS];
 mpz_t columns[NB_QUEENS];
 mpz_t rows[NB_QUEENS];
 
+// the merge columns, rows and diagonals in a single int
+mpz_t shots[NB_QUEENS][NB_QUEENS];
+
 void makeColumn(mpz_t column, short startPos)
 {
     // set column to 0
@@ -60,6 +63,9 @@ void makeRow(mpz_t row, short startPos)
         // left shift mask to next column
         mpz_mul_2exp(mask, mask, 1);
     }
+
+    // clear masks
+    mpz_clear(mask);
 }
 
 void makeDiagonal1(mpz_t diagonal, short startPos)
@@ -254,55 +260,64 @@ void showChessboard(mpz_t board)
 /*
     This function will build all the possible lines and put them in arrays so it is
     easy for the user to get which lines goes at witch position
-
-    @param display is a bitmap that tells witch board to show when building
-            - 0b0000 : no boards
-            - 0b0001 : columns
-            - 0b0010 : rows
-            - 0b0100 : diagonals 1
-            - 0b1000 : diagonals 2
 */
-void buildMasks(short display)
+void buildMasks()
 {
     for (short row = 0; row < NB_QUEENS; ++row)
     {
         mpz_init(columns[row]);
         makeColumn(columns[row], row);
 
-        if (display & 0b0001)
-        {
-            printf("Column %d\n", row);
-            showChessboard(columns[row]);
-        }
+#if BUILD_SHOW_COLUMNS > 0
+        printf("Column %d\n", row);
+        showChessboard(columns[row]);
+#endif
 
         mpz_init(rows[row]);
         makeRow(rows[row], row);
 
-        if (display & 0b0010)
-        {
-            printf("Row %d\n", row);
-            showChessboard(rows[row]);
-        }
+#if BUILD_SHOW_ROWS > 0
+        printf("Row %d\n", row);
+        showChessboard(rows[row]);
+#endif
 
         for (short column = 0; column < NB_QUEENS; ++column)
         {
             mpz_init(diagonals1[row][column]);
             makeDiagonal1(diagonals1[row][column], column - row);
 
-            if (display & 0b0100)
-            {
-                printf("Diagonal1 - row : %d - col : %d\n", row, column);
-                showChessboard(diagonals1[row][column]);
-            }
+#if BUILD_SHOW_DIAGONALS_1 > 0
+            printf("Diagonal1 - row : %d - col : %d\n", row, column);
+            showChessboard(diagonals1[row][column]);
+#endif
 
             mpz_init(diagonals2[row][column]);
             makeDiagonal2(diagonals2[row][column], column + row - NB_QUEENS + 1);
 
-            if (display & 0b1000)
-            {
-                printf("Diagonal2 - row : %d - col : %d\n", row, column);
-                showChessboard(diagonals2[row][column]);
-            }
+#if BUILD_SHOW_DIAGONALS_2 > 0
+            printf("Diagonal2 - row : %d - col : %d\n", row, column);
+            showChessboard(diagonals2[row][column]);
+#endif
+        }
+    }
+
+    // pretty redondant build but we dont care as the time to make it is insignificant
+    for (short row = 0; row < NB_QUEENS; ++row)
+    {
+        for (short column = 0; column < NB_QUEENS; ++column)
+        {
+            mpz_init(shots[row][column]);
+            mpz_set_ui(shots[row][column], 0);
+
+            // compare line and board
+            mpz_ior(shots[row][column], columns[column], rows[row]);
+            mpz_ior(shots[row][column], shots[row][column], diagonals1[row][column]);
+            mpz_ior(shots[row][column], shots[row][column], diagonals2[row][column]);
+
+#if BUILD_SHOW_SHOTS > 0
+            printf("All - row : %d - col : %d\n", row, column);
+            showChessboard(shots[row][column]);
+#endif
         }
     }
 }
@@ -317,6 +332,7 @@ void clearMasks()
         {
             mpz_clear(diagonals1[row][column]);
             mpz_clear(diagonals2[row][column]);
+            mpz_clear(shots[row][column]);
         }
     }
 }
@@ -365,10 +381,7 @@ short isQueenValid(mpz_t board, int row, int column)
     mpz_set_ui(checker, 0);
 
     // compare line and board
-    mpz_ior(checker, columns[column], rows[row]);
-    mpz_ior(checker, checker, diagonals1[row][column]);
-    mpz_ior(checker, checker, diagonals2[row][column]);
-    mpz_and(checker, board, checker);
+    mpz_and(checker, board, shots[row][column]);
     short returnValue = mpz_cmp_ui(checker, 0);
 
     // clear checker
@@ -389,176 +402,144 @@ void addQueenAt(mpz_t board, int row, int column)
     mpz_clear(new_queen);
 }
 
-// void testing()
-// {
-
-//     mpz_set_ui(chessboard, 7);
-
-//     // show column 3
-//     showChessboard(columns[2]);
-//     printf("Is queen on column 2?\n");
-//     printf(isQueenInColumn(chessboard, 2) ? "YES!\n" : "NO?\n");
-//     printf("Is queen on column 4?\n");
-//     printf(isQueenInColumn(chessboard, 4) ? "YES!\n" : "NO?\n");
-
-//     // show row 0
-//     showChessboard(rows[0]);
-//     printf("Is queen on row 0?\n");
-//     printf(isQueenInRow(chessboard, 0) ? "YES!\n" : "NO?\n");
-//     printf("Is queen on column 4?\n");
-//     printf(isQueenInRow(chessboard, 4) ? "YES!\n" : "NO?\n");
-
-//     // show diag1 (7,9)
-//     showChessboard(diagonals1[7][9]);
-//     printf("Is queen on diag1 (7,9)?\n");
-//     printf(isQueenInDiagonal1(chessboard, 7, 9) ? "YES!\n" : "NO?\n");
-//     printf("Is queen on diag1 (7,13)?\n");
-//     printf(isQueenInDiagonal1(chessboard, 7, 13) ? "YES!\n" : "NO?\n");
-
-//     // show diag1 (7,9)
-//     showChessboard(diagonals2[7][9]);
-//     printf("Is queen on diag1 (7,9)?\n");
-//     printf(isQueenInDiagonal2(chessboard, 7, 9) ? "YES!\n" : "NO?\n");
-//     printf("Is queen on diag1 (7,13)?\n");
-//     printf(isQueenInDiagonal2(chessboard, 7, 13) ? "YES!\n" : "NO?\n");
-
-//     // test point (9,10)
-//     // init and set checker to 0
-//     mpz_t checker;
-//     mpz_init(checker);
-//     mpz_set_ui(checker, 0);
-
-//     // compare line and board
-//     mpz_ior(checker, rows[9], columns[10]);
-//     mpz_ior(checker, checker, diagonals1[9][10]);
-//     mpz_ior(checker, checker, diagonals2[9][10]);
-
-//     showChessboard(checker);
-//     printf("Is queen valid on (9,10)?\n");
-//     printf(isQueenValid(chessboard, 9, 10) ? "YES!\n" : "NO?\n");
-//     printf("Is queen valid on (9,14)?\n");
-//     printf(isQueenValid(chessboard, 9, 14) ? "YES!\n" : "NO?\n");
-
-//     mpz_clear(checker);
-
-//     mpz_set_ui(chessboard, 0);
-//     showChessboard(chessboard);
-
-//     addQueenAt(chessboard, 1, 0);
-//     showChessboard(chessboard);
-
-//     addQueenAt(chessboard, 3, 1);
-//     showChessboard(chessboard);
-
-//     addQueenAt(chessboard, 2, 2);
-//     showChessboard(chessboard);
-
-//     addQueenAt(chessboard, 0, 3);
-//     showChessboard(chessboard);
-
-//     // mpz_t column;
-//     // mpz_init(column);
-//     // makeColumn(column, 3);
-//     // showChessboard(column);
-//     // mpz_clear(column);
-
-//     // mpz_t row;
-//     // mpz_init(row);
-//     // makeRow(row, 3);
-//     // showChessboard(row);
-//     // mpz_clear(row);
-
-//     // mpz_t diag1;
-//     // mpz_init(diag1);
-//     // makeDiagonal1(diag1, 0);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -1);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -2);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -3);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -4);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -5);
-//     // showChessboard(diag1);
-//     // makeDiagonal1(diag1, -6);
-//     // showChessboard(diag1);
-//     // mpz_clear(diag1);
-
-//     // mpz_t diag2;
-//     // mpz_init(diag2);
-//     // makeDiagonal2(diag2, 0);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -1);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -2);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -3);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -4);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -5);
-//     // showChessboard(diag2);
-//     // makeDiagonal2(diag2, -6);
-//     // showChessboard(diag2);
-//     // mpz_clear(diag2);
-// }
-
 long long unsigned nb_solutions = 0;
 
-void checkAllQueensRec(mpz_t board, int row, short verbose)
+void checkAllQueensRec(mpz_t board, int row)
 {
-    // printf("nb 1 : %lld\n",mpz_popcount(board));
-    // printf("\nRow : %d\n", row);
-    // showChessboard(board);
-    if (row == NB_QUEENS /*&& mpz_popcount(board) == 4*/)
+    if (row == NB_QUEENS)
     {
-        // printf("nb 1 : %lld\n", mpz_popcount(board));
-        if (verbose)
-        {
-            showChessboard(board);
-        }
+#if RUN_SHOW_SOLUTIONS > 0
+        showChessboard(board);
+#endif
         ++nb_solutions;
     }
     else
     {
         for (int col = 0; col < NB_QUEENS; ++col)
         {
-            // if (row == 2 && col == 2)
-            // {
-            //     printf("\n TESTING \n");
-            //     printf(isQueenValid(board, row, col) ? "Valid" : "Invalid");
-            //     printf("\n");
-            //     showChessboard(board);
-            // }
             if (isQueenValid(board, row, col))
             {
+                // create new board that is a copy of the board
                 mpz_t test_board;
                 mpz_init(test_board);
                 mpz_set(test_board, board);
+
+                // put the queen at position (row,col)
                 addQueenAt(test_board, row, col);
-                checkAllQueensRec(test_board, row + 1, verbose);
+
+                // recurse with the new board
+                checkAllQueensRec(test_board, row + 1);
             }
         }
     }
 }
 
+int stack_max = 0;
+unsigned long long allocated_ints = 0;
+
+void checkAllQueensIt()
+{
+    int index_stack = 0;
+
+    // Creating and prealocating boards
+    mpz_t boards[INT_SIZE];
+    for (int i = 0; i < INT_SIZE; ++i)
+    {
+        mpz_init(boards[i]);
+        mpz_set_ui(boards[i], 0);
+    }
+    mpz_t current_board;
+    mpz_init(current_board);
+
+    int rows[INT_SIZE];
+    rows[0] = 0;
+
+    while (index_stack >= 0)
+    {
+        stack_max = (index_stack > stack_max) * index_stack + (index_stack <= stack_max) * stack_max;
+
+        mpz_set(current_board, boards[index_stack]);
+        int old_stack = index_stack;
+        int row = rows[index_stack];
+        --index_stack;
+#if RUN_SHOW_STACK > 0
+        printf("Stack : %d\n", index_stack);
+#endif
+
+        if (row == NB_QUEENS)
+        {
+#if RUN_SHOW_SOLUTIONS > 0
+            showChessboard(current_board);
+#endif
+
+            ++nb_solutions;
+
+#if RUN_SHOW_SOLUTIONS_EVOLUTION > 0
+            printf("Nb solutions : %llu\n", nb_solutions);
+#endif
+        }
+        else
+        {
+            for (int col = 0; col < NB_QUEENS; ++col)
+            {
+                if (isQueenValid(current_board, row, col))
+                {
+                    ++index_stack;
+#if RUN_SHOW_STACK > 0
+                    printf("Stack : %d\n", index_stack);
+#endif
+#if RUN_SHOW_STACK_EVOLUTION > 0
+                    if (index_stack > stack_max)
+                    {
+                        printf("New stack max : %d\n", index_stack);
+                    }
+#endif
+                    mpz_set(boards[index_stack], current_board);
+                    // put the queen at position (row,col)
+                    addQueenAt(boards[index_stack], row, col);
+
+                    rows[index_stack] = row + 1;
+                }
+            }
+        }
+        // mpz_clear(current_board);
+    }
+
+    // clearing boards
+    for (int i = 0; i < INT_SIZE; ++i)
+    {
+        mpz_clear(boards[i]);
+    }
+    mpz_clear(current_board);
+}
+
 int main()
 {
-    buildMasks(0b0000);
+    printf("%d queen problem\n", NB_QUEENS);
+    clock_t begin_build = clock();
+    buildMasks(0b00000);
+    double time_spent = (double)(clock() - begin_build) / CLOCKS_PER_SEC;
+    printf("Time to buid %g seconds\n", time_spent);
 
     // init chessboard
     mpz_init(chessboard);
     mpz_set_ui(chessboard, 0);
     // showChessboard(chessboard);
 
-    clock_t begin = clock();
-    checkAllQueensRec(chessboard, 0, 0);
-    double time_spent = (double)(clock() - begin) / CLOCKS_PER_SEC;
+    clock_t begin_queens = clock();
+    // checkAllQueensRec(chessboard, 0, 0);
+    // time_spent = (double)(clock() - begin_queens) / CLOCKS_PER_SEC;
+    // printf("Recursive : Found %llu solutions in %g seconds\n", nb_solutions, time_spent);
 
-    printf("Found %llu solutions in %g seconds\n", nb_solutions, time_spent);
-
+    begin_queens = clock();
+    nb_solutions = 0;
+    checkAllQueensIt(0);
+    time_spent = (double)(clock() - begin_queens) / CLOCKS_PER_SEC;
+    printf("Iterative : Found %llu solutions in %g seconds\n", nb_solutions, time_spent);
+    printf("Biggest stack : %d\n", stack_max);
     mpz_clear(chessboard);
     clearMasks();
+
+    time_spent = (double)(clock() - begin_build) / CLOCKS_PER_SEC;
+    printf("Total time to complete %g seconds\n", time_spent);
 }

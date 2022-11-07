@@ -2,13 +2,17 @@
 #define N_QUEENS_H
 #include <gmp.h>
 
-#define NB_QUEENS 14
+#define NB_QUEENS 8
 #define INT_SIZE  NB_QUEENS*NB_QUEENS
 
-// #define MPZ_LEFT_SHIFT(number,shift_count){\
-// //left shift
-// mpz_mul_2exp(b,a,I);
-// //This is faster than `mpz_mod` since we are in 2^128 
-// mpz_tdiv_r_2exp(b,b,128);
+// VERBOSE DIRECTIVES
+#define BUILD_SHOW_COLUMNS 0
+#define BUILD_SHOW_ROWS 0
+#define BUILD_SHOW_DIAGONALS_1 0
+#define BUILD_SHOW_DIAGONALS_2 0
+#define BUILD_SHOW_SHOTS 0
+
+#define RUN_SHOW_SOLUTIONS 0
+#define RUN_SHOW_STACK_EVOLUTION 0
 
 #endif // N_QUEENS_H
