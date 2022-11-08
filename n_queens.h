@@ -1,7 +1,7 @@
 #ifndef N_QUEENS_H
 #define N_QUEENS_H
 
-#define NB_QUEENS 15
+#define NB_QUEENS 16
 #define INT_SIZE  NB_QUEENS*NB_QUEENS
 
 // VERBOSE DIRECTIVES
@@ -18,7 +18,8 @@
 
 #define USE_MPI 1
 #define MPI_AVOID_DUMMY_TRANSACTIONS 1
-#define MPI_MAX_ROW_FOR_TRANSACTION (NB_QUEENS - 10)
+#define MPI_MIN_TREE_DEPTH_FOR_TRANSACTION 10
+#define MPI_MAX_ROW_FOR_TRANSACTION (NB_QUEENS - MPI_MIN_TREE_DEPTH_FOR_TRANSACTION)
 #define MPI_SHOW_DEBUG 0
 #define MPI_SHOW_VISUAL_DEBUG 0
 #define MPI_STATS 1
@@ -31,9 +32,5 @@
 #define MPI_USEDCOL_TAG 52
 #define MPI_SERIALIZED_BOARD_LENGTH 100
 #define MPI_GMP_N_BIT_SERIALIZING 36
-
-
-#define push(sp, n) (*((sp)++) = (n))
-#define pop(sp) (*--(sp))
 
 #endif // N_QUEENS_H
