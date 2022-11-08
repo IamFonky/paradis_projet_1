@@ -12,8 +12,13 @@
 #if USE_MPI > 0
 int myrank, numprocs, running;
 #if MPI_STATS > 0
-int num_transactions = 0;
+unsigned long long num_transactions = 0;
+unsigned long long num_calculations = 0;
 #endif
+#endif
+
+#if RUN_SHOW_MAX_STACK > 0
+int stack_max = 0;
 #endif
 
 mpz_t diagonals1[NB_QUEENS][NB_QUEENS];
@@ -561,8 +566,6 @@ void mpi_managed_terminaison_routine()
     }
 }
 
-int stack_max = 0;
-
 void checkAllQueensIt()
 {
     int index_stack = 0;
@@ -604,8 +607,9 @@ void checkAllQueensIt()
 #endif
             mpi_sender_routine(&index_stack, boards_stack, rows_stack);
 #endif
-
+#if RUN_SHOW_MAX_STACK > 0
             stack_max = (index_stack > stack_max) * index_stack + (index_stack <= stack_max) * stack_max;
+#endif
 
             mpz_set(current_board, boards_stack[index_stack]);
             int old_stack = index_stack;
@@ -623,6 +627,9 @@ void checkAllQueensIt()
 
                 ++nb_solutions;
 
+#if MPI_STATS > 0
+                ++num_calculations;
+#endif
 #if RUN_SHOW_SOLUTIONS_EVOLUTION > 0
                 printf("Nb solutions : %llu\n", nb_solutions);
 #endif
@@ -650,6 +657,9 @@ void checkAllQueensIt()
                         rows_stack[index_stack] = row + 1;
                     }
                 }
+#if MPI_STATS > 0
+                ++num_calculations;
+#endif
             }
         }
 #if USE_MPI > 0
@@ -697,21 +707,20 @@ int main()
     unsigned long long sum_solutions;
 
 #if MPI_STATS > 0
-    int total_transactions;
+    unsigned long long total_transactions;
 #endif
 
     MPI_Init(NULL, NULL);
     MPI_Comm_rank(MPI_COMM_WORLD, &myrank);
     MPI_Comm_size(MPI_COMM_WORLD, &numprocs);
-    MPI_Barrier(MPI_COMM_WORLD); /*synchronize all processes*/
+    MPI_Barrier(MPI_COMM_WORLD);
     running = 1;
 
     if (myrank == 0)
     {
-        printf("%d Queens problem\n", NB_QUEENS);
-        printf("============================\n");
+        printf("%2d Queens problem with %2d procs\n", NB_QUEENS, numprocs);
+        printf("=================================\n");
     }
-
 #else
     clock_t begin_build;
     clock_t begin_queens;
@@ -752,21 +761,24 @@ int main()
     MPI_Reduce(&total_time, &avg_total_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 
 #if MPI_STATS > 0
-    MPI_Reduce(&num_transactions, &total_transactions, 1, MPI_INT, MPI_SUM, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&num_transactions, &total_transactions, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
 #endif
 
     if (myrank == 0)
     {
-        printf("Biggest stack : %d\n", stack_max);
+#if RUN_SHOW_MAX_STACK > 0
+        printf("Biggest stack           : %d\n", stack_max);
+#endif
 #if MPI_STATS > 0
-        printf("Number of transactions done : %d\n", total_transactions);
         unsigned long long nb_possibilities = 1;
         for (int i = NB_QUEENS; i > 1; --i)
         {
             nb_possibilities *= i;
         }
-        printf("Number of calculs : %llu\n", nb_possibilities);
-        printf("Transactions ratio  : %g%%\n", (float)total_transactions * 100.f / (float)nb_possibilities);
+        printf("Number of possibilities : %llu\n", nb_possibilities);
+        printf("Number of calulation    : %llu\n", num_calculations);
+        printf("Number of transactions  : %llu\n", total_transactions);
+        printf("Transactions ratio      : %g%%\n", (float)total_transactions * 100.f / (float)num_calculations);
 #endif
         printf("Build timings : Min: %lf  Max: %lf  Avg:  %lf\n", min_build_time, max_build_time, avg_build_time / numprocs);
         printf("Run timings : Min: %lf  Max: %lf  Avg:  %lf\n", min_total_time, max_total_time, avg_total_time / numprocs);

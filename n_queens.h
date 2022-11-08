@@ -1,7 +1,7 @@
 #ifndef N_QUEENS_H
 #define N_QUEENS_H
 
-#define NB_QUEENS 16
+#define NB_QUEENS 15
 #define INT_SIZE  NB_QUEENS*NB_QUEENS
 
 // VERBOSE DIRECTIVES
@@ -14,6 +14,7 @@
 #define RUN_SHOW_SOLUTIONS 0
 #define RUN_SHOW_STACK_EVOLUTION 0
 #define RUN_SHOW_STACK 0
+#define RUN_SHOW_MAX_STACK 0
 
 #define USE_MPI 1
 #define MPI_SHOW_DEBUG 0
