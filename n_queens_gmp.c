@@ -454,15 +454,23 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack, 
     MPI_Message message;
     MPI_Status status;
 
-    MPI_Improbe(MPI_ANY_SOURCE, MPI_ASK_TAG, MPI_COMM_WORLD, &got_message, &message, &status);
-    if (got_message)
-    {
-        MPI_Mrecv(&rcv_rank, 1, MPI_INT, &message, &status);
-#if MPI_SHOW_DEBUG > 0
-        printf("Proc %d got query for proc %d\n", myrank, rcv_rank);
+#if MPI_AVOID_DUMMY_TRANSACTIONS > 0
+    // Avoid clearing stack and avoid sending too low rows (calculation will become less than transaction time)
+    if ((*index_stack) > 2 && rows_stack[(*index_stack)] < MPI_MAX_ROW_FOR_TRANSACTION)
+#else
+    if ((*index_stack) > 2)
 #endif
-        if ((*index_stack) > 2)
+    {
+#if MPI_SHOW_DEBUG > 0
+        printf("Proc %d ready to send row %d\n", myrank, rows_stack[(*index_stack)]);
+#endif
+        MPI_Improbe(MPI_ANY_SOURCE, MPI_ASK_TAG, MPI_COMM_WORLD, &got_message, &message, &status);
+        if (got_message)
         {
+            MPI_Mrecv(&rcv_rank, 1, MPI_INT, &message, &status);
+#if MPI_SHOW_DEBUG > 0
+            printf("Proc %d got query for proc %d\n", myrank, rcv_rank);
+#endif
 #if MPI_SHOW_DEBUG > 0
             printf("Proc %d send ack with stack %d\n", myrank, (*index_stack));
 #endif
@@ -485,14 +493,6 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack, 
             MPI_Send(&used_cols_stack[(*index_stack)], 1, MPI_UNSIGNED_LONG_LONG, rcv_rank, MPI_USEDCOL_TAG, MPI_COMM_WORLD);
             --(*index_stack);
             free(serialized_board);
-        }
-        else
-        {
-#if MPI_SHOW_DEBUG > 0
-            printf("Proc %d send N-ack\n", myrank);
-#endif
-            int ack = 0;
-            MPI_Send(&ack, 1, MPI_INT, rcv_rank, MPI_ACK_TAG, MPI_COMM_WORLD);
         }
     }
 }
@@ -531,7 +531,7 @@ void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *
         unsigned long long used_cols;
         MPI_Recv(&used_cols, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, MPI_USEDCOL_TAG, MPI_COMM_WORLD, NULL);
 #if MPI_SHOW_DEBUG > 0
-        printf("Proc %d recieved used columns : %x\n", myrank, used_cols);
+        printf("Proc %d recieved used columns : %llx\n", myrank, used_cols);
 #endif
         used_cols_stack[(*index_stack)] = used_cols;
 
@@ -620,7 +620,7 @@ void checkAllQueensIt()
         {
 #if USE_MPI > 0
 #if MPI_SLOW_PROCESS > 0
-            sleep(5);
+            sleep(1);
 #endif
             mpi_sender_routine(&index_stack, boards_stack, rows_stack, used_cols_stack);
 #endif
@@ -827,7 +827,7 @@ int main()
 #endif
         printf("Build timings           : Min: %lf  Max: %lf  Avg:  %lf\n", min_build_time, max_build_time, avg_build_time / numprocs);
         printf("Run timings             : Min: %lf  Max: %lf  Avg:  %lf\n", min_total_time, max_total_time, avg_total_time / numprocs);
-        printf("Found %llu solutions (Min : %llu, Max : %llu)\n", sum_solutions, min_solutions, max_solutions);
+        printf("Found %llu solutions (Min : %llu, Max : %llu) in %4.4f sec\n", sum_solutions, min_solutions, max_solutions,max_total_time);
     }
 
     MPI_Finalize();
