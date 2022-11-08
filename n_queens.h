@@ -1,7 +1,7 @@
 #ifndef N_QUEENS_H
 #define N_QUEENS_H
 
-#define NB_QUEENS 6
+#define NB_QUEENS 15
 #define INT_SIZE  NB_QUEENS*NB_QUEENS
 
 // VERBOSE DIRECTIVES
@@ -19,7 +19,7 @@
 #define USE_MPI 1
 #define MPI_SHOW_DEBUG 0
 #define MPI_SHOW_VISUAL_DEBUG 0
-#define MPI_STATS 0
+#define MPI_STATS 1
 #define MPI_SLOW_PROCESS 0
 
 #define MPI_ASK_TAG 69

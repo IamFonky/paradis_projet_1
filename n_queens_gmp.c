@@ -12,6 +12,7 @@ int myrank, numprocs, running;
 #if MPI_STATS > 0
 unsigned long long num_transactions = 0;
 unsigned long long num_calculations = 0;
+double idle_time = 0;
 #endif
 #endif
 
@@ -446,7 +447,7 @@ void checkAllQueensRec(mpz_t board, int row)
 }
 
 #if USE_MPI > 0
-void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack,unsigned long long *used_cols_stack)
+void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack, unsigned long long *used_cols_stack)
 {
     int got_message = 0;
     int rcv_rank = -1;
@@ -586,6 +587,9 @@ void checkAllQueensIt()
         // If not the first proc, start with no stack and wait 1 sec for main stack to grow
         index_stack = -1;
         sleep(1);
+#if MPI_STATS > 0
+        idle_time += 1.0;
+#endif
     }
 
 #endif
@@ -677,7 +681,7 @@ void checkAllQueensIt()
 
                             rows_stack[index_stack] = row + 1;
 
-                            used_cols_stack[index_stack] =  used_col | col_mask;
+                            used_cols_stack[index_stack] = used_col | col_mask;
                         }
                     }
                     col_mask = col_mask << 1;
@@ -688,6 +692,9 @@ void checkAllQueensIt()
             }
         }
 #if USE_MPI > 0
+#if MPI_STATS > 0
+        double start_wait = MPI_Wtime();
+#endif
         if (myrank == 0)
         {
             mpi_managed_terminaison_routine();
@@ -697,6 +704,9 @@ void checkAllQueensIt()
         {
             mpi_receiver_initiated_routine(&index_stack, boards_stack, rows_stack, used_cols_stack);
         }
+#if MPI_STATS > 0
+        idle_time += MPI_Wtime() - start_wait;
+#endif
     }
 #endif
 
@@ -733,6 +743,10 @@ int main()
 
 #if MPI_STATS > 0
     unsigned long long total_transactions;
+
+    double max_idle_time;
+    double min_idle_time;
+    double avg_idle_time;
 #endif
 
     MPI_Init(NULL, NULL);
@@ -787,6 +801,10 @@ int main()
 
 #if MPI_STATS > 0
     MPI_Reduce(&num_transactions, &total_transactions, 1, MPI_UNSIGNED_LONG_LONG, MPI_SUM, 0, MPI_COMM_WORLD);
+
+    MPI_Reduce(&idle_time, &max_idle_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&idle_time, &min_idle_time, 1, MPI_DOUBLE, MPI_MIN, 0, MPI_COMM_WORLD);
+    MPI_Reduce(&idle_time, &avg_idle_time, 1, MPI_DOUBLE, MPI_SUM, 0, MPI_COMM_WORLD);
 #endif
 
     if (myrank == 0)
@@ -804,9 +822,11 @@ int main()
         printf("Number of calulation    : %llu\n", num_calculations);
         printf("Number of transactions  : %llu\n", total_transactions);
         printf("Transactions ratio      : %g%%\n", (float)total_transactions * 100.f / (float)num_calculations);
+        printf("Idle timings            : Min: %lf  Max: %lf  Avg:  %lf\n", min_idle_time, max_idle_time, avg_idle_time / numprocs);
+        printf("Idle time ratio         : %g%%\n", avg_idle_time * 100.0 / avg_total_time);
 #endif
-        printf("Build timings : Min: %lf  Max: %lf  Avg:  %lf\n", min_build_time, max_build_time, avg_build_time / numprocs);
-        printf("Run timings : Min: %lf  Max: %lf  Avg:  %lf\n", min_total_time, max_total_time, avg_total_time / numprocs);
+        printf("Build timings           : Min: %lf  Max: %lf  Avg:  %lf\n", min_build_time, max_build_time, avg_build_time / numprocs);
+        printf("Run timings             : Min: %lf  Max: %lf  Avg:  %lf\n", min_total_time, max_total_time, avg_total_time / numprocs);
         printf("Found %llu solutions (Min : %llu, Max : %llu)\n", sum_solutions, min_solutions, max_solutions);
     }
 
