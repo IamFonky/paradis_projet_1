@@ -7,9 +7,7 @@
 #if USE_MPI > 0
 #include <unistd.h>
 #include <mpi.h>
-#endif
 
-#if USE_MPI > 0
 int myrank, numprocs, running;
 #if MPI_STATS > 0
 unsigned long long num_transactions = 0;
@@ -447,7 +445,8 @@ void checkAllQueensRec(mpz_t board, int row)
     }
 }
 
-void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack)
+#if USE_MPI > 0
+void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack,unsigned long long *used_cols_stack)
 {
     int got_message = 0;
     int rcv_rank = -1;
@@ -479,9 +478,11 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack)
             printf("Proc %d send row %d\n", myrank, rows_stack[(*index_stack)]);
 #endif
             MPI_Send(&rows_stack[(*index_stack)], 1, MPI_INT, rcv_rank, MPI_ROW_TAG, MPI_COMM_WORLD);
-
+#if MPI_SHOW_DEBUG > 0
+            printf("Proc %d send used cols %x\n", myrank, rows_stack[(*index_stack)]);
+#endif
+            MPI_Send(&used_cols_stack[(*index_stack)], 1, MPI_UNSIGNED_LONG_LONG, rcv_rank, MPI_USEDCOL_TAG, MPI_COMM_WORLD);
             --(*index_stack);
-
             free(serialized_board);
         }
         else
@@ -495,7 +496,7 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack)
     }
 }
 
-void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack)
+void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack, unsigned long long *used_cols_stack)
 {
 #if MPI_SHOW_DEBUG > 0
     printf("Proc %d asked stack to : 0\n", myrank);
@@ -525,6 +526,13 @@ void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *
         printf("Proc %d recieved row : %d\n", myrank, row);
 #endif
         rows_stack[(*index_stack)] = row;
+
+        unsigned long long used_cols;
+        MPI_Recv(&used_cols, 1, MPI_UNSIGNED_LONG_LONG, MPI_ANY_SOURCE, MPI_USEDCOL_TAG, MPI_COMM_WORLD, NULL);
+#if MPI_SHOW_DEBUG > 0
+        printf("Proc %d recieved used columns : %x\n", myrank, used_cols);
+#endif
+        used_cols_stack[(*index_stack)] = used_cols;
 
         free(serialized_board);
 
@@ -565,6 +573,7 @@ void mpi_managed_terminaison_routine()
         }
     }
 }
+#endif
 
 void checkAllQueensIt()
 {
@@ -595,6 +604,10 @@ void checkAllQueensIt()
     int rows_stack[INT_SIZE];
     rows_stack[0] = 0;
 
+    // Declaring columns row stack
+    unsigned long long used_cols_stack[INT_SIZE];
+    used_cols_stack[0] = 0;
+
 #if USE_MPI > 0
     while (running)
     {
@@ -605,7 +618,7 @@ void checkAllQueensIt()
 #if MPI_SLOW_PROCESS > 0
             sleep(5);
 #endif
-            mpi_sender_routine(&index_stack, boards_stack, rows_stack);
+            mpi_sender_routine(&index_stack, boards_stack, rows_stack, used_cols_stack);
 #endif
 #if RUN_SHOW_MAX_STACK > 0
             stack_max = (index_stack > stack_max) * index_stack + (index_stack <= stack_max) * stack_max;
@@ -614,6 +627,7 @@ void checkAllQueensIt()
             mpz_set(current_board, boards_stack[index_stack]);
             int old_stack = index_stack;
             int row = rows_stack[index_stack];
+            unsigned long long used_col = used_cols_stack[index_stack];
             --index_stack;
 #if RUN_SHOW_STACK > 0
             printf("Stack : %d\n", index_stack);
@@ -636,26 +650,37 @@ void checkAllQueensIt()
             }
             else
             {
+                unsigned long long col_mask = 1;
                 for (int col = 0; col < NB_QUEENS; ++col)
                 {
-                    if (isQueenValid(current_board, row, col))
+                    // printf("=============================\n");
+                    // printf("Used col %x\n",used_col);
+                    // printf("Mask col %x\n",col_mask);
+                    // printf("Unio col %x\n",used_col & col_mask);
+                    if (!(used_col & col_mask))
                     {
-                        ++index_stack;
+                        if (isQueenValid(current_board, row, col))
+                        {
+                            ++index_stack;
 #if RUN_SHOW_STACK > 0
-                        printf("Stack : %d\n", index_stack);
+                            printf("Stack : %d\n", index_stack);
 #endif
 #if RUN_SHOW_STACK_EVOLUTION > 0
-                        if (index_stack > stack_max)
-                        {
-                            printf("New stack max : %d\n", index_stack);
-                        }
+                            if (index_stack > stack_max)
+                            {
+                                printf("New stack max : %d\n", index_stack);
+                            }
 #endif
-                        mpz_set(boards_stack[index_stack], current_board);
+                            mpz_set(boards_stack[index_stack], current_board);
 
-                        addQueenAt(boards_stack[index_stack], row, col);
+                            addQueenAt(boards_stack[index_stack], row, col);
 
-                        rows_stack[index_stack] = row + 1;
+                            rows_stack[index_stack] = row + 1;
+
+                            used_cols_stack[index_stack] =  used_col | col_mask;
+                        }
                     }
+                    col_mask = col_mask << 1;
                 }
 #if MPI_STATS > 0
                 ++num_calculations;
@@ -670,7 +695,7 @@ void checkAllQueensIt()
         }
         else
         {
-            mpi_receiver_initiated_routine(&index_stack, boards_stack, rows_stack);
+            mpi_receiver_initiated_routine(&index_stack, boards_stack, rows_stack, used_cols_stack);
         }
     }
 #endif
@@ -725,14 +750,14 @@ int main()
     clock_t begin_build;
     clock_t begin_queens;
     double time_spent;
-    printf("%d queen problem\n", NB_QUEENS);
-    printf("============================\n");
+    printf("%2d queen problem\n", NB_QUEENS);
+    printf("=================\n");
 #endif
 
 #if USE_MPI > 0
     begin_build = MPI_Wtime();
 #else
-    begin_build = clock()
+    begin_build = clock();
 #endif
     buildMasks(0b00000);
 #if USE_MPI > 0
@@ -789,6 +814,8 @@ int main()
 #else
     time_spent = (double)(clock() - begin_build) / CLOCKS_PER_SEC;
     printf("Iterative : Found %llu solutions in %g seconds\n", nb_solutions, time_spent);
-    printf("Biggest stack : %d\n", stack_max);
+#if RUN_SHOW_MAX_STACK > 0
+    printf("Biggest stack           : %d\n", stack_max);
+#endif
 #endif
 }
