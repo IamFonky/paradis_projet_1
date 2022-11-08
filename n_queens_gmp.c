@@ -9,6 +9,7 @@
 #include <mpi.h>
 
 int myrank, numprocs, running;
+
 #if MPI_STATS > 0
 unsigned long long num_transactions = 0;
 unsigned long long num_calculations = 0;
@@ -584,12 +585,7 @@ void checkAllQueensIt()
 
     if (myrank != 0)
     {
-        // If not the first proc, start with no stack and wait 1 sec for main stack to grow
         index_stack = -1;
-        sleep(1);
-#if MPI_STATS > 0
-        idle_time += 1.0;
-#endif
     }
 
 #endif
@@ -657,10 +653,6 @@ void checkAllQueensIt()
                 unsigned long long col_mask = 1;
                 for (int col = 0; col < NB_QUEENS; ++col)
                 {
-                    // printf("=============================\n");
-                    // printf("Used col %x\n",used_col);
-                    // printf("Mask col %x\n",col_mask);
-                    // printf("Unio col %x\n",used_col & col_mask);
                     if (!(used_col & col_mask))
                     {
                         if (isQueenValid(current_board, row, col))
@@ -710,7 +702,6 @@ void checkAllQueensIt()
     }
 #endif
 
-    // clearing boards_stack
     for (int i = 0; i < INT_SIZE; ++i)
     {
         mpz_clear(boards_stack[i]);
@@ -827,7 +818,7 @@ int main()
 #endif
         printf("Build timings           : Min: %lf  Max: %lf  Avg:  %lf\n", min_build_time, max_build_time, avg_build_time / numprocs);
         printf("Run timings             : Min: %lf  Max: %lf  Avg:  %lf\n", min_total_time, max_total_time, avg_total_time / numprocs);
-        printf("Found %llu solutions (Min : %llu, Max : %llu) in %4.4f sec\n", sum_solutions, min_solutions, max_solutions,max_total_time);
+        printf("Found %llu solutions (Min : %llu, Max : %llu) in %4.4f sec\n", sum_solutions, min_solutions, max_solutions, max_total_time);
     }
 
     MPI_Finalize();
