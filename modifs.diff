@@ -1,0 +1,101 @@
+diff --git a/n_queens_gmp.c b/n_queens_gmp.c
+index bb356ba..ae5a5ca 100644
+--- a/n_queens_gmp.c
++++ b/n_queens_gmp.c
+@@ -29,6 +29,9 @@ mpz_t rows[NB_QUEENS];
+ // merged columns, rows and diagonals in a single int
+ mpz_t shots[NB_QUEENS][NB_QUEENS];
+ 
++mpz_t queen_manipulator;
++char serialized_board[MPI_SERIALIZED_BOARD_LENGTH];
++
+ void makeColumn(mpz_t column, short startPos)
+ {
+     // set column to 0
+@@ -388,31 +391,20 @@ short isQueenInDiagonal2(mpz_t board, int row, int column)
+ 
+ short isQueenValid(mpz_t board, int row, int column)
+ {
+-    // init and set checker to 0
+-    mpz_t checker;
+-    mpz_init(checker);
+-    mpz_set_ui(checker, 0);
+-
+     // compare line and board
+-    mpz_and(checker, board, shots[row][column]);
+-    short returnValue = mpz_cmp_ui(checker, 0);
++    mpz_and(queen_manipulator, board, shots[row][column]);
++    short returnValue = mpz_cmp_ui(queen_manipulator, 0);
+ 
+-    // clear checker
+-    mpz_clear(checker);
+     return !returnValue;
+ }
+ 
+ void addQueenAt(mpz_t board, int row, int column)
+ {
+-    mpz_t new_queen;
+-    mpz_init(new_queen);
+-    mpz_set_ui(new_queen, 1);
++    mpz_set_ui(queen_manipulator, 1);
+ 
+     // left shift queen to position
+-    mpz_mul_2exp(new_queen, new_queen, (column + row * NB_QUEENS));
+-    mpz_ior(board, board, new_queen);
+-
+-    mpz_clear(new_queen);
++    mpz_mul_2exp(queen_manipulator, queen_manipulator, (column + row * NB_QUEENS));
++    mpz_ior(board, board, queen_manipulator);
+ }
+ 
+ long long unsigned nb_solutions = 0;
+@@ -478,7 +470,6 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack,
+             int ack = 1;
+             MPI_Send(&ack, 1, MPI_INT, rcv_rank, MPI_ACK_TAG, MPI_COMM_WORLD);
+ 
+-            char *serialized_board = malloc(MPI_SERIALIZED_BOARD_LENGTH);
+             mpz_get_str(serialized_board, MPI_GMP_N_BIT_SERIALIZING, boards_stack[(*index_stack)]);
+ #if MPI_SHOW_DEBUG > 0
+             printf("Proc %d send board %s\n", myrank, serialized_board);
+@@ -493,7 +484,6 @@ void mpi_sender_routine(int *index_stack, mpz_t *boards_stack, int *rows_stack,
+ #endif
+             MPI_Send(&used_cols_stack[(*index_stack)], 1, MPI_UNSIGNED_LONG_LONG, rcv_rank, MPI_USEDCOL_TAG, MPI_COMM_WORLD);
+             --(*index_stack);
+-            free(serialized_board);
+         }
+     }
+ }
+@@ -512,7 +502,6 @@ void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *
+     if (rcv_ack == 1)
+     {
+         (*index_stack) = 0;
+-        char *serialized_board = malloc(MPI_SERIALIZED_BOARD_LENGTH);
+         MPI_Recv(serialized_board, MPI_SERIALIZED_BOARD_LENGTH, MPI_BYTE, MPI_ANY_SOURCE, MPI_BOARD_TAG, MPI_COMM_WORLD, NULL);
+ #if MPI_SHOW_DEBUG > 0
+         printf("Proc %d recieved board : %s\n", myrank, serialized_board);
+@@ -536,8 +525,6 @@ void mpi_receiver_initiated_routine(int *index_stack, mpz_t *boards_stack, int *
+ #endif
+         used_cols_stack[(*index_stack)] = used_cols;
+ 
+-        free(serialized_board);
+-
+ #if MPI_STATS > 0
+         num_transactions++;
+ #endif
+@@ -715,7 +702,7 @@ void checkAllQueensIt()
+ 
+ int main()
+ {
+-
++    mpz_init(queen_manipulator);
+ #if USE_MPI > 0
+     double begin_build;
+     double build_time;
+@@ -774,6 +761,7 @@ int main()
+ 
+     checkAllQueensIt();
+     clearMasks();
++    mpz_clear(queen_manipulator);
+ 
+ #if USE_MPI > 0
+     total_time = MPI_Wtime() - begin_build;
